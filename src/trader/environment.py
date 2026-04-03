@@ -1,19 +1,22 @@
-from typing import Optional
 import numpy as np
 import gymnasium as gym
 import pandas as pd
 
-class GridWorldEnv(gym.Env):
 
-    def __init__(self, num_features: int, num_stocks: int, data:pd.DataFrame, budget: int):
+class GridWorldEnv(gym.Env):
+    def __init__(
+        self, num_features: int, num_stocks: int, data: pd.DataFrame, budget: int
+    ):
 
         self.num_stocks = num_stocks
         self.data = data
         self.observation_space = gym.spaces.Box(
-            low = -np.inf, high = np.inf, shape=(num_features + 1,num_stocks)
+            low=-np.inf, high=np.inf, shape=(num_features + 1, num_stocks)
         )
 
-        self.action_space = gym.spaces.Box(low=0, high=1, shape=(num_stocks,), dtype=np.float32)
+        self.action_space = gym.spaces.Box(
+            low=0, high=1, shape=(num_stocks,), dtype=np.float32
+        )
         self.budget = budget
         self.current_budget = budget
 
@@ -28,15 +31,17 @@ class GridWorldEnv(gym.Env):
         return self._get_state()
 
     def step(self, action):
-        current_prices = self.data.loc[self.current_step, 'Close'].values
-        full_budget = self.current_budget + np.sum(self.current_weights * current_prices)
+        current_prices = self.data.loc[self.current_step, "Close"].values
+        full_budget = self.current_budget + np.sum(
+            self.current_weights * current_prices
+        )
 
         investment_per_stock = action * full_budget
 
         stocks = np.floor(investment_per_stock / current_prices).astype(int)
 
         new_budget = full_budget - np.sum(stocks * current_prices)
-        reward = new_budget + np.sum(stocks * current_prices)   - full_budget
+        reward = new_budget + np.sum(stocks * current_prices) - full_budget
 
         self.current_step += 1
         self.current_budget = new_budget
@@ -45,6 +50,5 @@ class GridWorldEnv(gym.Env):
         terminated = self.current_step >= len(self.data) - 1
         truncated = False
         info = {}
-
 
         return observation, reward, terminated, truncated, info
