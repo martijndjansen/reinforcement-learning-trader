@@ -17,14 +17,14 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["ipykernel>=7.2.0", "pre-commit>=4.5.1"]
+dev = ["ipykernel>=7.2.0", "pre-commit>=4.5.1", "reinforcement-learning-trader"]
 
 [build-system]
 requires = ["setuptools>=65", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-where = ["src/trader"]
+where = ["src"]
 
 [tool.ruff]
 line-length = 88
@@ -44,3 +44,9 @@ select = [
 
 ignore = []
 exclude = ["build", "dist", ".venv", "__pycache__"]
+
+[tool.uv.workspace]
+members = ["."]
+
+[tool.uv.sources]
+reinforcement-learning-trader = { workspace = true }
