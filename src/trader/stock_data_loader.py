@@ -1,9 +1,11 @@
-import yfinance as yf
 import numpy as np
+import yfinance as yf
+
+from .data_classes import EnvData
 
 
 class StockDataLoader:
-    def __init__(self, tickers, period):
+    def __init__(self, tickers: list[str], period: str) -> None:
         self.tickers = tickers
         self.period = period
         self.data = None
@@ -12,7 +14,7 @@ class StockDataLoader:
         self.num_features = None
         self.num_stocks = None
 
-    def load(self):
+    def load(self) -> EnvData:
         self.data = yf.download(self.tickers, period=self.period, auto_adjust=True)
 
         if self.data is None:
@@ -36,4 +38,9 @@ class StockDataLoader:
 
         self.data_rl = self.data.to_numpy().astype(np.float32)
 
-        return self.data, self.data_rl, self.num_features, self.num_stocks, self.prices
+        return EnvData(
+            data=self.data_rl,
+            prices=self.prices,
+            num_features=self.num_features,
+            num_stocks=self.num_stocks,
+        )

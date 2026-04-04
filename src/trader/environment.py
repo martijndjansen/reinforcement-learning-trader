@@ -1,54 +1,55 @@
-from typing import Any
+from typing import Any, Dict, Tuple
 
-import numpy as np
 import gymnasium as gym
+import numpy as np
+
+from .data_classes import EnvData
 
 
 class TraderEnvironment(gym.Env):
     def __init__(
         self,
-        num_features: int,
-        num_stocks: int,
-        data: np.ndarray,
-        prices: np.ndarray,
-        budget: int,
-    ):
+        env_data: EnvData,
+        budget: np.float32,
+    ) -> None:
 
-        self.num_stocks = num_stocks
-        self.data = data
+        self.num_stocks = env_data.num_stocks
+        self.data = env_data.data
 
-        self.prices = prices
-        print(num_features)
-        print(num_stocks)
-        print(num_features * num_stocks + num_stocks)
+        self.prices = env_data.prices
+
         self.observation_space = gym.spaces.Box(
             low=-np.inf,
             high=np.inf,
-            shape=(num_features * num_stocks + num_stocks,),
+            shape=(env_data.num_features * env_data.num_stocks + env_data.num_stocks,),
             dtype=np.float32,
         )
 
         self.action_space = gym.spaces.Box(
-            low=0, high=1, shape=(num_stocks,), dtype=np.float32
+            low=0, high=1, shape=(env_data.num_stocks,), dtype=np.float32
         )
         self.budget = budget
         self.current_budget = budget
 
         self.reset()
 
-    def _get_state(self):
+    def _get_state(self) -> np.ndarray:
         current_features = self.data[self.current_step].flatten()
         state = np.concatenate([current_features, self.current_weights])
         return state.astype(np.float32)
 
-    def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None):
+    def reset(
+        self, *, seed: int | None = None, options: dict[str, Any] | None = None
+    ) -> Tuple[np.ndarray, dict]:
         super().reset(seed=seed)
         self.current_step = 0
         self.current_weights = np.zeros(self.num_stocks, dtype=np.float32)
         return self._get_state(), {}
 
-    def step(self, action):
-        current_prices = self.prices[self.current_step]
+    def step(
+        self, action: np.float32
+    ) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
+        current_prices: np.float32 = self.prices[self.current_step]
         portfolio_value = self.current_budget + self.current_weights @ current_prices
 
         action = action / (action.sum() + 1e-8)

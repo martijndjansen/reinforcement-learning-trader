@@ -17,14 +17,30 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = [
-    "ipykernel>=7.2.0",
-    "pre-commit>=4.5.1",
-]
+dev = ["ipykernel>=7.2.0", "pre-commit>=4.5.1"]
 
 [build-system]
 requires = ["setuptools>=65", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["src/trader"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E", # PEP8 formatting
+    "F", # logical errors / pyflakes
+    "B", # bugbear: suspicious constructs
+    "C", # complexity (McCabe)
+    # "D",   # docstrings
+    "I",   # import cleanliness
+    "ANN", # type hints
+    "S",   # security issues
+]
+
+ignore = []
+exclude = ["build", "dist", ".venv", "__pycache__"]

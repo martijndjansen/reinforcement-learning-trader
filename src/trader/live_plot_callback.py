@@ -1,11 +1,11 @@
-from stable_baselines3.common.callbacks import BaseCallback
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from IPython.display import clear_output
+from stable_baselines3.common.callbacks import BaseCallback
 
 
 class LivePlotCallback(BaseCallback):
-    def __init__(self, total_timesteps, verbose=0):
+    def __init__(self, total_timesteps: int, verbose: int = 0) -> None:
         super().__init__(verbose)
         self.rewards = []
         self.steps = []
