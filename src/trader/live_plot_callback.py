@@ -36,8 +36,8 @@ class LivePlotCallback(BaseCallback):
             ax1.set_ylabel("Mean Reward")
             ax1.set_title(f"Progress ({self.num_timesteps}/{self.total_timesteps})")
 
-            weights = self.trader_environment.current_shares
-            tickers = self.tickers
+            weights = self.trader_environment.current_weights
+            tickers = [*self.tickers, "cash"]
             ax2.bar(tickers, weights)
             ax2.set_title("Current Portfolio Weights")
 
