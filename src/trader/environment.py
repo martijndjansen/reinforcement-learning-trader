@@ -11,20 +11,30 @@ class TraderEnvironment(gym.Env):
         self,
         env_data: EnvData,
         budget: np.float32,
+        max_step_size: np.float32,
+        episode_length: int,
+        global_features: int,
+        history_length: int,
+        fee_rate: np.float32,
     ) -> None:
 
         self.num_stocks = env_data.num_stocks
         self.data = env_data.data
-
         self.prices = env_data.prices
-
         self.num_current_weights = env_data.num_stocks + 1
+        self.budget = budget
+        self.fee_rate = fee_rate
+        self.max_step_size = max_step_size
+        self.episode_length = episode_length
+        self.history_length = history_length
 
         self.observation_space = gym.spaces.Box(
             low=0,
             high=1,
             shape=(
-                env_data.num_features * env_data.num_stocks + self.num_current_weights,
+                (env_data.num_features * env_data.num_stocks + global_features)
+                * self.history_length
+                + self.num_current_weights,
             ),
             dtype=np.float32,
         )
@@ -32,31 +42,30 @@ class TraderEnvironment(gym.Env):
         self.action_space = gym.spaces.Box(
             low=-1, high=1, shape=(self.num_current_weights,), dtype=np.float32
         )
-        self.budget = budget
-
-        self.max_step_size = 0.2
 
         self.reset()
 
     def _get_state(self) -> np.ndarray:
-        current_features = self.data[self.current_step].flatten()
-        state = np.concatenate([current_features, self.current_weights])
+
+        window_data = self.data[
+            self.current_step - self.history_length + 1 : self.current_step + 1
+        ]
+        state = np.concatenate([window_data.flatten(), self.current_weights])
         return state.astype(np.float32)
 
     def reset(
         self, *, seed: int | None = None, options: dict[str, Any] | None = None
     ) -> Tuple[np.ndarray, dict]:
         super().reset(seed=seed)
-        self.current_step = 0
-        self.current_weights = np.zeros(self.num_current_weights, dtype=np.float32)
 
-        self.current_weights[-1] = 1.0
+        raw_weights = self.np_random.uniform(0.1, 1, self.num_current_weights)
+        self.current_weights = raw_weights / np.sum(raw_weights)
 
-        self.current_shares = np.zeros(self.num_stocks, dtype=np.float32)
-
-        self.current_budget = self.budget
+        max_start = len(self.prices) - self.episode_length - 1
+        self.current_step = self.np_random.integers(self.history_length, max_start)
 
         self.portfolio_value = self.budget
+        self._elapsed_steps = 0
 
         return self._get_state(), {}
 
@@ -64,34 +73,44 @@ class TraderEnvironment(gym.Env):
         self, action: np.float32
     ) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
 
-        current_prices: np.float32 = self.prices[self.current_step]
+        delta = action * self.max_step_size
+        new_weights_unnormalized = np.maximum(self.current_weights + delta, 0)
 
-        self.current_weights = np.clip(
-            self.current_weights + self.max_step_size * action, 0, 1
+        transaction_cost = (
+            np.sum(np.abs(new_weights_unnormalized - self.current_weights))
+            * self.fee_rate
         )
-        total_weight = np.sum(self.current_weights) + 1e-8
-        self.current_weights = self.current_weights / total_weight
+        self.portfolio_value -= self.portfolio_value * transaction_cost
+        self.current_weights = new_weights_unnormalized / (
+            np.sum(new_weights_unnormalized) + 1e-8
+        )
 
-        stock_weights = self.current_weights[:-1]
-        cash_weight = self.current_weights[-1]
-
+        current_prices = self.prices[self.current_step]
         self.current_step += 1
+        self._elapsed_steps += 1
 
         next_prices = self.prices[self.current_step]
+        stock_weights = self.current_weights[:-1]
+        cash_weight = self.current_weights[-1]
 
         price_returns = next_prices / (current_prices + 1e-8)
 
         portfolio_return = stock_weights @ price_returns + cash_weight
-
         new_portfolio_value = portfolio_return * self.portfolio_value
 
-        reward = new_portfolio_value - self.portfolio_value
+        reward = np.log(new_portfolio_value / self.portfolio_value)
 
         self.portfolio_value = new_portfolio_value
 
-        observation = self._get_state()
-        terminated = self.current_step >= len(self.data) - 1
-        truncated = False
         info = {}
+
+        observation = self._get_state()
+        terminated = bool(self.current_step >= len(self.data) - 1)
+        truncated = self._elapsed_steps >= self.episode_length
+        if terminated or truncated:
+            info["final_info"] = {
+                "portfolio_value": self.portfolio_value,
+                "steps": self._elapsed_steps,
+            }
 
         return observation, reward, terminated, truncated, info
