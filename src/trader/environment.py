@@ -2,6 +2,8 @@ from typing import Any, Dict, Tuple
 
 import gymnasium as gym
 import numpy as np
+import torch
+from torch.nn.functional import softmax as torch_softmax
 
 from .data_classes import EnvData
 
@@ -11,7 +13,6 @@ class TraderEnvironment(gym.Env):
         self,
         env_data: EnvData,
         budget: np.float32,
-        max_step_size: np.float32,
         episode_length: int,
         global_features: int,
         history_length: int,
@@ -24,7 +25,6 @@ class TraderEnvironment(gym.Env):
         self.num_current_weights = env_data.num_stocks + 1
         self.budget = budget
         self.fee_rate = fee_rate
-        self.max_step_size = max_step_size
         self.episode_length = episode_length
         self.history_length = history_length
 
@@ -73,23 +73,22 @@ class TraderEnvironment(gym.Env):
         self, action: np.float32
     ) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
 
-        delta = action * self.max_step_size
-        new_weights_unnormalized = np.maximum(self.current_weights + delta, 0)
+        action_tensor = torch.as_tensor(action, dtype=torch.float32)
 
-        transaction_cost = (
-            np.sum(np.abs(new_weights_unnormalized - self.current_weights))
-            * self.fee_rate
-        )
-        self.portfolio_value -= self.portfolio_value * transaction_cost
-        self.current_weights = new_weights_unnormalized / (
-            np.sum(new_weights_unnormalized) + 1e-8
-        )
+        target_weights = torch_softmax(action_tensor * 5, dim=-1).numpy()
+
+        weight_change = np.abs(target_weights - self.current_weights)
+        transaction_cost_ratio = np.sum(weight_change) * self.fee_rate
+
+        self.portfolio_value -= self.portfolio_value * transaction_cost_ratio
+
+        self.current_weights = target_weights
 
         current_prices = self.prices[self.current_step]
         self.current_step += 1
         self._elapsed_steps += 1
-
         next_prices = self.prices[self.current_step]
+
         stock_weights = self.current_weights[:-1]
         cash_weight = self.current_weights[-1]
 
@@ -98,7 +97,10 @@ class TraderEnvironment(gym.Env):
         portfolio_return = stock_weights @ price_returns + cash_weight
         new_portfolio_value = portfolio_return * self.portfolio_value
 
-        reward = np.log(new_portfolio_value / self.portfolio_value)
+        reward = (
+            np.log(new_portfolio_value / self.portfolio_value)
+            - transaction_cost_ratio * 1.1
+        )
 
         self.portfolio_value = new_portfolio_value
 

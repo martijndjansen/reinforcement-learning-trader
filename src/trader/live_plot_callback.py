@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import numpy as np
 import plotly.graph_objects as go
 from IPython.display import clear_output
@@ -40,13 +42,11 @@ class LivePlotCallback(BaseCallback):
                 self.episode_final_values.append(final_val)
                 self.current_episode_value.append(final_val)
 
-                self._plot_dashboard()
-
             self._reset()
 
         return True
 
-    def _plot_dashboard(self) -> None:
+    def _plot_dashboard(self, terminated: bool = False) -> None:
         clear_output(wait=True)
 
         fig = make_subplots(
@@ -136,3 +136,14 @@ class LivePlotCallback(BaseCallback):
         )
 
         fig.show()
+
+        if terminated:
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H.%M.%S")
+
+            val = f"{self.trader_env.portfolio_value / 1000:.1f}k"
+
+            fig.write_image(f"runs/{timestamp}_step-{self.num_timesteps}_val-{val}.svg")
+
+    def _on_training_end(self) -> None:
+
+        self._plot_dashboard(terminated=True)
