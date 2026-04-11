@@ -2,8 +2,6 @@ from typing import Any, Dict, Tuple
 
 import gymnasium as gym
 import numpy as np
-import torch
-from torch.nn.functional import softmax as torch_softmax
 
 from .data_classes import EnvData
 
@@ -40,7 +38,7 @@ class TraderEnvironment(gym.Env):
         )
 
         self.action_space = gym.spaces.Box(
-            low=-1, high=1, shape=(self.num_current_weights,), dtype=np.float32
+            low=0, high=1, shape=(self.num_current_weights,), dtype=np.float32
         )
 
         self.reset()
@@ -70,19 +68,21 @@ class TraderEnvironment(gym.Env):
         return self._get_state(), {}
 
     def step(
-        self, action: np.float32
+        self, action: np.ndarray
     ) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
 
-        action_tensor = torch.as_tensor(action, dtype=torch.float32)
+        print(action)
 
-        target_weights = torch_softmax(action_tensor * 5, dim=-1).numpy()
+        # action_tensor = torch.as_tensor(action, dtype=torch.float32)
 
-        weight_change = np.abs(target_weights - self.current_weights)
+        # target_weights = torch_softmax(action_tensor * 5, dim=-1).numpy()
+
+        weight_change = np.abs(action - self.current_weights)
         transaction_cost_ratio = np.sum(weight_change) * self.fee_rate
 
         self.portfolio_value -= self.portfolio_value * transaction_cost_ratio
 
-        self.current_weights = target_weights
+        self.current_weights = action
 
         current_prices = self.prices[self.current_step]
         self.current_step += 1
