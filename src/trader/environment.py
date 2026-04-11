@@ -12,9 +12,9 @@ class TraderEnvironment(gym.Env):
         env_data: EnvData,
         budget: np.float32,
         episode_length: int,
-        global_features: int,
         history_length: int,
         fee_rate: np.float32,
+        lmb: np.float32,
     ) -> None:
 
         self.num_stocks = env_data.num_stocks
@@ -25,14 +25,16 @@ class TraderEnvironment(gym.Env):
         self.fee_rate = fee_rate
         self.episode_length = episode_length
         self.history_length = history_length
+        self.lmb = lmb
 
         self.observation_space = gym.spaces.Box(
             low=0,
             high=1,
             shape=(
-                (env_data.num_features * env_data.num_stocks + global_features)
+                (env_data.num_features * env_data.num_stocks + env_data.global_features)
                 * self.history_length
-                + self.num_current_weights,
+                + env_data.num_stocks
+                + 1,
             ),
             dtype=np.float32,
         )
@@ -71,18 +73,13 @@ class TraderEnvironment(gym.Env):
         self, action: np.ndarray
     ) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
 
-        print(action)
-
-        # action_tensor = torch.as_tensor(action, dtype=torch.float32)
-
-        # target_weights = torch_softmax(action_tensor * 5, dim=-1).numpy()
+        pre_trade_value = self.portfolio_value
 
         weight_change = np.abs(action - self.current_weights)
         transaction_cost_ratio = np.sum(weight_change) * self.fee_rate
-
         self.portfolio_value -= self.portfolio_value * transaction_cost_ratio
 
-        self.current_weights = action
+        self.current_weights = action.copy()
 
         current_prices = self.prices[self.current_step]
         self.current_step += 1
@@ -98,8 +95,8 @@ class TraderEnvironment(gym.Env):
         new_portfolio_value = portfolio_return * self.portfolio_value
 
         reward = (
-            np.log(new_portfolio_value / self.portfolio_value)
-            - transaction_cost_ratio * 1.1
+            np.log(new_portfolio_value / pre_trade_value)
+            - transaction_cost_ratio * self.lmb
         )
 
         self.portfolio_value = new_portfolio_value

@@ -45,15 +45,21 @@ class DirichletDistribution(CategoricalDistribution):
     def sample(self) -> th.Tensor:
         return self.distribution.sample()
 
-    def mode(self) -> th.Tensor:
+    def get_actions(self, deterministic: bool = False) -> th.Tensor:
+        """
+        Return actions according to the probability distribution.
 
+        :param deterministic:
+        :return:
+        """
+        if deterministic:
+            return self.mean()
+        return self.sample()
+
+    def mean(self) -> th.Tensor:
+        """This is the mean"""
         alpha = self.distribution.concentration
-        K = alpha.shape[-1]
-        alpha_min_1 = (alpha - 1).clamp(min=1e-6)
-        alpha_sum = (alpha.sum(dim=-1, keepdim=True) - K).clamp(min=1e-8)
-        mode = alpha_min_1 / alpha_sum
-
-        return mode
+        return alpha / alpha.sum(dim=-1, keepdim=True)
 
     def actions_from_params(
         self, action_logits: th.Tensor, deterministic: bool = False

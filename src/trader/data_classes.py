@@ -9,6 +9,7 @@ class EnvData:
     prices: np.ndarray
     num_features: int
     num_stocks: int
+    global_features: int
 
     def __post_init__(self) -> None:
         self.data = np.array(self.data, dtype=np.float32)
