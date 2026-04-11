@@ -17,7 +17,6 @@ class LivePlotCallback(BaseCallback):
         tickers: list[str],
         total_timesteps: int,
         verbose: int = 0,
-        eval_freq: float = 1 / 100,
     ) -> None:
         super().__init__(verbose)
         self.train_env = train_env
@@ -27,7 +26,6 @@ class LivePlotCallback(BaseCallback):
 
         self.episode_final_values = []
         self.val_history = []
-        self.eval_freq = int(eval_freq * total_timesteps)
 
         self.val_current_weights = []
         self.val_current_values = []
@@ -38,28 +36,26 @@ class LivePlotCallback(BaseCallback):
         self.current_episode_weights = []
 
     def _run_validation_episode(self) -> None:
-        if self.n_calls % self.eval_freq == 0:
-            self.val_current_weights = []
-            self.val_current_values = []
 
-            obs, _ = self.val_env.reset()
-            done = False
-            while not done:
-                action, _ = self.model.predict(obs, deterministic=True)
-                obs, _, terminated, truncated, _ = self.val_env.step(action)
+        self.val_current_weights = []
+        self.val_current_values = []
 
-                self.val_current_values.append(self.val_env.portfolio_value)
-                self.val_current_weights.append(self.val_env.current_weights)
+        obs, _ = self.val_env.reset()
+        done = False
+        while not done:
+            action, _ = self.model.predict(obs, deterministic=True)
+            obs, _, terminated, truncated, _ = self.val_env.step(action)
 
-                done = terminated or truncated
+            self.val_current_values.append(self.val_env.portfolio_value)
+            self.val_current_weights.append(self.val_env.current_weights)
 
-            val_final_value = self.val_env.portfolio_value
-            self.val_history.append((self.num_timesteps, val_final_value))
+            done = terminated or truncated
 
-            self._plot_dashboard()
+        val_final_value = self.val_env.portfolio_value
+        self.val_history.append((self.num_timesteps, val_final_value))
 
     def _on_step(self) -> bool:
-        self._run_validation_episode()
+
         infos = self.locals["infos"][0]
         done = self.locals["dones"][0]
 
@@ -71,6 +67,9 @@ class LivePlotCallback(BaseCallback):
                 final_val = infos["final_info"]["portfolio_value"]
                 self.episode_final_values.append(final_val)
                 self.current_episode_value.append(final_val)
+
+            self._run_validation_episode()
+            self._plot_dashboard()
             self._reset()
 
         return True

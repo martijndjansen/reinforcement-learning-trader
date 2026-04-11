@@ -20,6 +20,13 @@ class TraderEnvironment(gym.Env):
         self.num_stocks = env_data.num_stocks
         self.data = env_data.data
         self.prices = env_data.prices
+
+        self.step_returns = np.pad(
+            self.prices[1:] / (self.prices[:-1] + 1e-8),
+            ((0, 0), (0, 1)),
+            constant_values=1.0,
+        )
+
         self.num_current_weights = env_data.num_stocks + 1
         self.budget = budget
         self.fee_rate = fee_rate
@@ -73,33 +80,16 @@ class TraderEnvironment(gym.Env):
         self, action: np.ndarray
     ) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
 
-        pre_trade_value = self.portfolio_value
+        cost = np.sum(np.abs(action - self.current_weights)) * self.fee_rate
 
-        weight_change = np.abs(action - self.current_weights)
-        transaction_cost_ratio = np.sum(weight_change) * self.fee_rate
-        self.portfolio_value -= self.portfolio_value * transaction_cost_ratio
-
-        self.current_weights = action.copy()
-
-        current_prices = self.prices[self.current_step]
-        self.current_step += 1
-        self._elapsed_steps += 1
-        next_prices = self.prices[self.current_step]
-
-        stock_weights = self.current_weights[:-1]
-        cash_weight = self.current_weights[-1]
-
-        price_returns = next_prices / (current_prices + 1e-8)
-
-        portfolio_return = stock_weights @ price_returns + cash_weight
-        new_portfolio_value = portfolio_return * self.portfolio_value
-
-        reward = (
-            np.log(new_portfolio_value / pre_trade_value)
-            - transaction_cost_ratio * self.lmb
-        )
+        growth_factor = action @ self.step_returns[self.current_step]
+        new_portfolio_value = self.portfolio_value * (1.0 - cost) * growth_factor
+        reward = np.log(new_portfolio_value / self.portfolio_value) - cost * self.lmb
 
         self.portfolio_value = new_portfolio_value
+        self.current_weights = action
+        self.current_step += 1
+        self._elapsed_steps += 1
 
         info = {}
 

@@ -24,15 +24,11 @@ class StockDataLoader:
     def cyclical(f: Callable, index: int, max: int) -> np.float32:
         return f(2 * np.pi * index / max)
 
-    def load(self) -> Tuple[pd.DataFrame, EnvData, EnvData]:
-        self.data = yf.download(
-            self.tickers + self.macro_tickers, period=self.period, auto_adjust=True
-        )
+    def _add_stock_features(self) -> None:
+        stocks: list[str] = self.tickers
 
         if self.data is None:
             raise ValueError("Failed to download data.")
-
-        stocks: list[str] = self.tickers
 
         # stock features
         for stock in stocks + self.macro_tickers:
@@ -55,7 +51,9 @@ class StockDataLoader:
                 (raw_vol / (raw_vol.shift(1) + 1e-8)).clip(lower=1e-8)
             )
 
-        # global features
+    def _add_global_features(self) -> None:
+        if self.data is None:
+            raise ValueError("Failed to download data.")
         self.data[("Global", "Stock_Volatility")] = self.data["Volatility"].mean(axis=1)  # type: ignore
         self.data[("Global", "Fear_VIX")] = self.data["Return", "^VIX"]
         self.data[("Global", "Rates_TNX")] = self.data["Return", "^TNX"]
@@ -64,14 +62,9 @@ class StockDataLoader:
             self.data["Return", "XLK"] - self.data["Return", "XLP"]
         )
 
-        self.data = self.data.iloc[20:].copy()
-        self.data = self.data.sort_index(axis=1, level=1)
-
-        self.num_stocks = len(self.tickers)
-        self.prices = (
-            self.data.xs("Close", level=0, axis=1)[stocks].to_numpy().astype(np.float32)
-        )
-
+    def _flatten_data(self) -> None:
+        if self.data is None:
+            raise ValueError("Failed to download data.")
         self.data = self.data.drop(
             labels=list(set(self.macro_tickers) - set(self.tickers)), level=1, axis=1
         )
@@ -80,6 +73,9 @@ class StockDataLoader:
 
         self.data = self.data.reset_index()
 
+    def _add_time_features(self) -> None:
+        if self.data is None:
+            raise ValueError("Failed to download data.")
         self.data["Month"] = self.data["Date"].dt.month
         self.data["DayOfWeek"] = self.data["Date"].dt.dayofweek
 
@@ -89,6 +85,9 @@ class StockDataLoader:
                     function, cast(int, self.data[type]), max
                 )
 
+    def _prepare_data(self) -> Tuple[pd.DataFrame, EnvData, EnvData]:
+        if self.data is None or self.prices is None:
+            raise ValueError("Failed to download data.")
         stock_cols = [
             c
             for c in self.data.columns
@@ -112,20 +111,36 @@ class StockDataLoader:
         self.data_rl = self.data.drop(["Date"], axis=1).to_numpy().astype(np.float32)
         num_features_per_stock = len(stock_cols) // len(self.tickers)
 
-        return (
-            self.data,
+        env_data = [
             EnvData(
-                data=self.data_rl[:split_idx],
-                prices=self.prices[:split_idx],
+                data=d,
+                prices=p,
                 num_features=num_features_per_stock,
-                num_stocks=self.num_stocks,
+                num_stocks=len(self.tickers),
                 global_features=len(global_cols) + len(time_cols),
-            ),
-            EnvData(
-                data=self.data_rl[split_idx:],
-                prices=self.prices[split_idx:],
-                num_features=num_features_per_stock,
-                num_stocks=self.num_stocks,
-                global_features=len(global_cols) + len(time_cols),
-            ),
+            )
+            for d, p in [
+                (self.data_rl[:split_idx], self.prices[:split_idx]),
+                (self.data_rl[split_idx:], self.prices[split_idx:]),
+            ]
+        ]
+
+        return (self.data, env_data[0], env_data[1])
+
+    def load(self) -> Tuple[pd.DataFrame, EnvData, EnvData]:
+        self.data = yf.download(
+            self.tickers + self.macro_tickers, period=self.period, auto_adjust=True
         )
+
+        if self.data is None:
+            raise ValueError("Failed to download data.")
+
+        self._add_stock_features()
+        self._add_global_features()
+
+        self.prices = self.data["Close"][self.tickers].to_numpy(dtype=np.float32)
+
+        self._flatten_data()
+        self._add_time_features()
+
+        return self._prepare_data()

@@ -3,7 +3,7 @@
 
 
 ## Improvements
-1. CNN or LSTM over MLP
+1. CNN or LSTM, transformer, or mambda over MLP
 2. Implement Differential Sharpe Ratio
     $$R_t = DSR_t - \lambda * (Transaction costs)_t$$
 
