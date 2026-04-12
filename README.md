@@ -16,11 +16,11 @@ To ensure a realistic simulation, actions are taken before market movements are 
 #### 1. Definitions
 For any timestep $t \in \{1, 2, \dots, T\}$ and any asset $i \in \{1, 2, \dots, N\}$:
 
-- $\mathbf{X}_{t-1} \in \mathbb{R}^{H \times (N \cdot M)}$: The history of $M$ features for each of the $N$ stocks over $H$ timesteps.
-- $\mathbf{u}_{t-1} \in \mathbb{R}^{G}$: A vector of $G$ global features at the end of $t-1$.
-- $\mathbf{w}_{t} \in \mathbb{R}^{N+1}$: The portfolio weights held at the beginning of step $t$ (the drifted result of $\mathbf{a}_{t-1}$).
-- $\mathbf{x}_{t-1} = (\mathbf{X}_{t-1}, \mathbf{u}_{t-1}, \mathbf{w}_{t})$: The composite observation provided to the agent.
-- $\mathbf{a}_{t} \in \mathbb{R}^{N+1}$: The action vector (target weights) chosen by the agent:
+- $\mathbf{X}\_{t-1} \in \mathbb{R}^{H \times (N \cdot M)}$: The history of $M$ features for each of the $N$ stocks over $H$ timesteps.
+- $\mathbf{u}\_{t-1} \in \mathbb{R}^{G}$: A vector of $G$ global features at the end of $t-1$.
+- $\mathbf{w}\_{t} \in \mathbb{R}^{N+1}$: The portfolio weights held at the beginning of step $t$ (the drifted result of $\mathbf{a}_{t-1}$).
+- $\mathbf{x}\_{t-1} = \left(\mathbf{X}\_{t-1}, \mathbf{u}\_{t-1}, \mathbf{w}\_{t}\right)$: The composite observation provided to the agent.
+- $\mathbf{a}\_{t} \in \mathbb{R}^{N+1}$: The action vector (target weights) chosen by the agent:
 
 $$\sum_{i=1}^{N+1} a_{t,i} = 1, \quad a_{t,i} \geq 0$$
 
