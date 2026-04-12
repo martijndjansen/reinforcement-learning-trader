@@ -55,7 +55,7 @@ class TraderEnvironment(gym.Env):
     def _get_state(self) -> np.ndarray:
 
         window_data = self.data[
-            self.current_step - self.history_length + 1 : self.current_step + 1
+            self.current_step - self.history_length : self.current_step
         ]
         state = np.concatenate([window_data.flatten(), self.current_weights])
         return state.astype(np.float32)
@@ -79,15 +79,15 @@ class TraderEnvironment(gym.Env):
     def step(
         self, action: np.ndarray
     ) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
-
         cost = np.sum(np.abs(action - self.current_weights)) * self.fee_rate
+        r = self.step_returns[self.current_step]
 
-        growth_factor = action @ self.step_returns[self.current_step]
+        growth_factor = action @ r
         new_portfolio_value = self.portfolio_value * (1.0 - cost) * growth_factor
         reward = np.log(new_portfolio_value / self.portfolio_value) - cost * self.lmb
 
+        self.current_weights = (action * r) / (growth_factor + 1e-8)
         self.portfolio_value = new_portfolio_value
-        self.current_weights = action
         self.current_step += 1
         self._elapsed_steps += 1
 
