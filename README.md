@@ -45,7 +45,7 @@ The portfolio value $v_t$ is updated by accounting for capital lost to fees foll
 $$v_t = v_{t-1} \cdot (1 - c_t) \cdot G_t$$
 
 #### 3. Weight Update (Drift)
-After the market move $\mathbf{r}_t$, the weights for the next timestep $\mathbf{w}_{t+1}$ are calculated by the relative growth of each asset:
+After the market move $\mathbf{r}\_{t}$, the weights for the next timestep $\mathbf{w}\_{t+1}$ are calculated by the relative growth of each asset:
 
 $$\mathbf{w}_{t+1} = \frac{\mathbf{a}_t \odot \mathbf{r}_t}{G_t}$$
 
