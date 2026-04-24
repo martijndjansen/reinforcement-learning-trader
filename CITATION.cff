@@ -1,0 +1,8 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the underlying paper as follows:"
+authors:
+  - family-names: "Kuznetsov"
+    given-names: "Arsenii"
+title: "Truncated Quantile Critics for Continuous Control"
+date-released: 2020-07-13
+url: "https://arxiv.org/abs/2005.04269"

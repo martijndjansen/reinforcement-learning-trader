@@ -1,4 +1,4 @@
-# notebook-reinforcement-learning
+# Reinforcement Learning Trader
 
 ## Improvements
 1. CNN or LSTM, transformer, or mambda over MLP

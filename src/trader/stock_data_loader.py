@@ -65,6 +65,8 @@ class StockDataLoader:
     def _flatten_data(self) -> None:
         if self.data is None:
             raise ValueError("Failed to download data.")
+
+        self.data = self.data.fillna(0)
         self.data = self.data.drop(
             labels=list(set(self.macro_tickers) - set(self.tickers)), level=1, axis=1
         )
