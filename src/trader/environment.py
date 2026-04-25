@@ -1,4 +1,4 @@
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Literal, Tuple
 
 import gymnasium as gym
 import numpy as np
@@ -14,7 +14,8 @@ class TraderEnvironment(gym.Env):
         episode_length: int,
         history_length: int,
         fee_rate: np.float32,
-        lmb: np.float32,
+        distribution: Literal["gaussian", "dirichlet"],
+        alpha: np.float32,
     ) -> None:
 
         self.num_stocks = env_data.num_stocks
@@ -32,7 +33,7 @@ class TraderEnvironment(gym.Env):
         self.fee_rate = fee_rate
         self.episode_length = episode_length
         self.history_length = history_length
-        self.lmb = lmb
+        self.distribution: Literal["gaussian", "dirichlet"] = distribution
 
         self.observation_space = gym.spaces.Box(
             low=0,
@@ -46,10 +47,22 @@ class TraderEnvironment(gym.Env):
             dtype=np.float32,
         )
 
-        self.action_space = gym.spaces.Box(
-            low=0, high=1, shape=(self.num_current_weights,), dtype=np.float32
-        )
+        limits = (-np.inf, np.inf)
+        if distribution == "dirichlet":
+            limits = (0, 1)
+        elif distribution == "gaussian":
+            limits = (-10, 10)
+        else:
+            raise ValueError(f"Distribution `{distribution}` not implemented")
 
+        self.alpha = alpha
+
+        self.action_space = gym.spaces.Box(
+            low=limits[0],
+            high=limits[1],
+            shape=(self.num_current_weights,),
+            dtype=np.float32,
+        )
         self.reset()
 
     def _get_state(self) -> np.ndarray:
@@ -79,12 +92,17 @@ class TraderEnvironment(gym.Env):
     def step(
         self, action: np.ndarray
     ) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
+        if self.distribution == "gaussian":
+            shift_actions = action - np.max(action)
+            action = np.exp(shift_actions) / np.sum(np.exp(shift_actions))
         cost = np.sum(np.abs(action - self.current_weights)) * self.fee_rate
         r = self.step_returns[self.current_step]
 
         growth_factor = action @ r
         new_portfolio_value = self.portfolio_value * (1.0 - cost) * growth_factor
-        reward = np.log(new_portfolio_value / self.portfolio_value) - cost * self.lmb
+
+        net_return = (new_portfolio_value - self.portfolio_value) / self.portfolio_value
+        reward = (1 - np.exp(-self.alpha * net_return)) / self.alpha
 
         self.current_weights = (action * r) / (growth_factor + 1e-8)
         self.portfolio_value = new_portfolio_value

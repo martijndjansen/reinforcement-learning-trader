@@ -8,10 +8,25 @@
 ## Implementation
 1. PPO + Dirichlet. PPO over SAC as SAC does not have Dirichlet 'support'
 
+### Overview
+
+#### 1. Truncated Quantile Critics (TQC)
+This project utilizes **Truncated Quantile Critics (TQC)** [^1] as the core reinforcement learning algorithm.
+
+#### 2. Logistic-Normal Action Space
+To satisfy the portfolio constraint ($\sum a_i = 1, a_i \ge 0$), we employ a **Logistic-Normal** action space.
+
+#### 3. Box Bounding
+Following the implementation best practices established in the **Soft Actor-Critic (SAC)** framework [^2], the action space is defined as a `gym.spaces.Box` bounded within **$[-10.0, 10.0]$**.
+
+#### 4. Reward function: CARA
+Instead of raw log-returns, we implement a **Constant Absolute Risk Aversion (CARA)** function.
+
 
 ### Mathematical notation of agent
 
 To ensure a realistic simulation, actions are taken before market movements are observed.
+
 
 #### 1. Definitions
 For any timestep $t \in \{1, 2, \dots, T\}$ and any asset $i \in \{1, 2, \dots, N\}$:
@@ -26,6 +41,7 @@ $$\sum_{i=1}^{N+1} a_{t,i} = 1, \quad a_{t,i} \geq 0$$
 
 - $v_t \in \mathbb{R}$: The total portfolio value at the end of timestep $t$.
 - $f \in \mathbb{R}$: The transaction fee rate.
+- $\alpha > 0 \in \mathbb{R}$: The bigger $\alpha$ becomes, the more risk it takes.
 
 #### 2. Calculating new portfolio value
 The price returns $\mathbf{r}_t \in \mathbb{R}^{N+1}$ represents the change in price of all stocks during timestep $t$:
@@ -52,6 +68,22 @@ $$\mathbf{w}_{t+1} = \frac{\mathbf{a}_t \odot \mathbf{r}_t}{G_t}$$
 > Where $\odot$ denotes the element-wise product.
 
 #### 4. Reward Function
-The reward $R_t$ is defined as the log-return of the portfolio value, penalized by transaction costs via the hyperparameter $\lambda$:
+The reward function is an adjusted form of CARA as used by Shen and Liang [^4].
 
-$$R_t = \log\left(\frac{v_t}{v_{t-1}}\right) - \lambda c_t$$
+$$ R_t = \frac{1-\exp(-\alpha \cdot r_t )}{\alpha}$$
+
+Where
+$$r_t = \frac{v_t - v_{t-1}}{v_{t-1}} $$
+
+Here $$\alpha > 0$$
+
+
+## References
+
+[^1]: **Kuznetsov, A., Shvechikov, P., et al. (2020).** *Truncated Quantile Critics for Continuous Control*. International Conference on Machine Learning (ICML). [arXiv:2005.04269](https://arxiv.org/abs/2005.04269).
+
+[^2]: **Haarnoja, T., et al. (2018).** *Soft Actor-Critic: Off-Policy Maximum Entropy Deep Reinforcement Learning with a Stochastic Actor*. [arXiv:1801.01290](https://arxiv.org/abs/1801.01290).
+
+[^3]: **Aitchison, J. (1982).** *The Statistical Analysis of Compositional Data*. (Theoretical foundation for Logistic-Normal distributions on the simplex).
+
+[^4]: **Shen, W., Wang, J., & Jiang, P. (2020).** *Risk-Sensitive Reinforcement Learning for Portfolio Management*. Frontiers in Applied Mathematics and Statistics.
