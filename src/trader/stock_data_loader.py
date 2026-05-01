@@ -1,24 +1,27 @@
-from typing import Callable, Tuple, cast
+import os
+from collections.abc import Callable
+from typing import cast
 
 import numpy as np
 import pandas as pd
-import yfinance as yf
 from sklearn.preprocessing import StandardScaler
 
 from .data_classes import EnvData
 
 
 class StockDataLoader:
-    def __init__(
-        self, tickers: list[str], macro_tickers: list[str], period: str
-    ) -> None:
+    REQUIRED_MACRO_TICKERS = ["^VIX", "^TNX", "GLD", "XLK", "XLP"]
+
+    def __init__(self, tickers: list[str], period: str) -> None:
         self.tickers = tickers
-        self.macro_tickers = macro_tickers
+        self.macro_tickers = self.REQUIRED_MACRO_TICKERS
         self.period = period
         self.data = None
         self.data_rl = None
         self.prices = None
         self.num_stocks = None
+        self.filepath = "data/stock_data.csv"
+        self.pricepath = "data/stock_prices.npy"
 
     @staticmethod
     def cyclical(f: Callable, index: int, max: int) -> np.float32:
@@ -54,12 +57,21 @@ class StockDataLoader:
     def _add_global_features(self) -> None:
         if self.data is None:
             raise ValueError("Failed to download data.")
-        self.data[("Global", "Stock_Volatility")] = self.data["Volatility"].mean(axis=1)  # type: ignore
-        self.data[("Global", "Fear_VIX")] = self.data["Return", "^VIX"]
-        self.data[("Global", "Rates_TNX")] = self.data["Return", "^TNX"]
-        self.data[("Global", "Safety_GLD")] = self.data["Return", "GLD"]
-        self.data[("Global", "Regime_XLK_XLP")] = (
-            self.data["Return", "XLK"] - self.data["Return", "XLP"]
+
+        r = self.data["Return"]
+
+        global_features = {
+            ("Global", "Stock_Volatility"): self.data["Volatility"]
+            .mean(axis=1)  # type: ignore
+            .to_numpy(),
+            ("Global", "Fear_VIX"): r["^VIX"].to_numpy(),
+            ("Global", "Rates_TNX"): r["^TNX"].to_numpy(),
+            ("Global", "Safety_GLD"): r["GLD"].to_numpy(),
+            ("Global", "Regime_XLK_XLP"): (r["XLK"] - r["XLP"]).to_numpy(),
+        }
+
+        self.data = pd.concat(
+            [self.data, pd.DataFrame(global_features, index=self.data.index)], axis=1
         )
 
     def _flatten_data(self) -> None:
@@ -67,6 +79,7 @@ class StockDataLoader:
             raise ValueError("Failed to download data.")
 
         self.data = self.data.fillna(0)
+        self.data = self.data.sort_index(axis=1)
         self.data = self.data.drop(
             labels=list(set(self.macro_tickers) - set(self.tickers)), level=1, axis=1
         )
@@ -87,9 +100,14 @@ class StockDataLoader:
                     function, cast(int, self.data[type]), max
                 )
 
-    def _prepare_data(self) -> Tuple[pd.DataFrame, EnvData, EnvData]:
+    def _prepare_data(self) -> tuple[EnvData, EnvData]:
         if self.data is None or self.prices is None:
             raise ValueError("Failed to download data.")
+
+        if not (os.path.exists(self.filepath) and os.path.exists(self.pricepath)):
+            self.data.to_csv(self.filepath)
+            np.save(self.pricepath, self.prices)
+
         stock_cols = [
             c
             for c in self.data.columns
@@ -127,12 +145,23 @@ class StockDataLoader:
             ]
         ]
 
-        return (self.data, env_data[0], env_data[1])
+        return env_data[0], env_data[1]
 
-    def load(self) -> Tuple[pd.DataFrame, EnvData, EnvData]:
-        self.data = yf.download(
+    def _download_data(self) -> pd.DataFrame | None:
+        import yfinance as yf
+
+        return yf.download(
             self.tickers + self.macro_tickers, period=self.period, auto_adjust=True
         )
+
+    def load(self) -> tuple[EnvData, EnvData]:
+        if os.path.exists(self.filepath) and os.path.exists(self.pricepath):
+            self.data = pd.read_csv(self.filepath, index_col=0)
+            self.prices = np.load(self.pricepath)
+
+            return self._prepare_data()
+
+        self.data = self._download_data()
 
         if self.data is None:
             raise ValueError("Failed to download data.")

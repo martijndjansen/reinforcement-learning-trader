@@ -1,10 +1,10 @@
-from datetime import datetime
+import time
 
 import numpy as np
 import plotly.graph_objects as go
-from IPython.display import clear_output
-from plotly.subplots import make_subplots
+from aim import Figure, Run
 from stable_baselines3.common.callbacks import BaseCallback
+from tqdm import tqdm
 
 from .environment import TraderEnvironment
 
@@ -16,6 +16,7 @@ class LivePlotCallback(BaseCallback):
         val_env: TraderEnvironment,
         tickers: list[str],
         total_timesteps: int,
+        episode_length: int,
         verbose: int = 0,
     ) -> None:
         super().__init__(verbose)
@@ -24,16 +25,26 @@ class LivePlotCallback(BaseCallback):
         self.tickers = [*tickers, "CASH"]
         self.total_timesteps = total_timesteps
 
+        self.aim_run = Run(repo=".", experiment="rl_trading")
+
         self.episode_final_values = []
         self.val_history = []
 
         self.val_current_weights = []
         self.val_current_values = []
+        self.episode_length = episode_length
+        self.progress_bar = tqdm(
+            total=int(total_timesteps / episode_length), desc="Episodes", position=0
+        )
         self._reset()
 
     def _reset(self) -> None:
         self.current_episode_value = []
         self.current_episode_weights = []
+        self.episode_start_time = time.time()
+        self.step_progress_bar = tqdm(
+            total=int(self.episode_length), desc="Steps", position=1, leave=False
+        )
 
     def _run_validation_episode(self) -> None:
 
@@ -52,153 +63,99 @@ class LivePlotCallback(BaseCallback):
             done = terminated or truncated
 
         val_final_value = self.val_env.portfolio_value
-        self.val_history.append((self.num_timesteps, val_final_value))
+        self.val_history.append(val_final_value)
+        self.aim_run.track(
+            {"val/episode_portfolio_value": val_final_value},
+            step=self.num_timesteps,
+            context={"env": "train", "chart": "valuation"},
+        )
 
     def _on_step(self) -> bool:
+        for key, value in self.logger.name_to_value.items():
+            if isinstance(value, (int, float, np.number)):
+                self.aim_run.track(
+                    value, name=key, context={"env": "train", "chart": "algorithm"}
+                )
 
         infos = self.locals["infos"][0]
         done = self.locals["dones"][0]
+
+        self.aim_run.track(
+            {"train/portfolio_value": self.train_env.portfolio_value},
+            step=self.num_timesteps,
+        )
+
+        self.step_progress_bar.update(1)
 
         if not done:
             self.current_episode_value.append(self.train_env.portfolio_value)
             self.current_episode_weights.append(self.train_env.current_weights)
         else:
             if "final_info" in infos:
+                self.progress_bar.update(1)
                 final_val = infos["final_info"]["portfolio_value"]
                 self.episode_final_values.append(final_val)
                 self.current_episode_value.append(final_val)
-
-            self._run_validation_episode()
-            self._plot_dashboard()
+                self.aim_run.track(
+                    {
+                        "train/episode_portfolio_value": final_val,
+                        "train/episode_time_sec": time.time() - self.episode_start_time,
+                    },
+                    step=self.num_timesteps,
+                    context={"env": "train", "chart": "valuation"},
+                )
+            if self.num_timesteps % (self.episode_length * 3) == 0:
+                self._run_validation_episode()
+                self._plot_dashboard()
             self._reset()
 
         return True
 
-    def _plot_dashboard(self, terminated: bool = False) -> None:
-        clear_output(wait=True)
+    def _plot_dashboard(self) -> None:
+        fig_1 = go.Figure()
 
-        fig = make_subplots(
-            rows=4,
-            cols=2,
-            subplot_titles=(
-                "Train: Final Episode Values",
-                "Train: Current Weights",
-                "Train: Weights Over Time",
-                "Train: Current Equity",
-                "Val: Learning Curve (Final Vals)",
-                "Val: Current Weights",
-                "Val: Weights Over Time",
-                "Val: Current Equity",
-            ),
-            vertical_spacing=0.08,
-        )
+        episode_num = int(self.num_timesteps / self.episode_length)
 
-        def add_env_plots(
-            row_start: int,
-            final_vals: list[float],
-            weights_hist: list[float],
-            equity_hist: list[float],
-            prefix: str,
-        ) -> None:
-            # Figure 1: final episode summed stock value
-            y_vals = (
-                final_vals if prefix == "Train" else [v[1] for v in self.val_history]
+        for name, y, weights_hist in [
+            ("Train", self.episode_final_values, self.current_episode_weights),
+            ("Val", self.val_history, self.val_current_weights),
+        ]:
+            fig_1.add_scatter(
+                y=y,
+                mode="lines+markers",
+                name=f"{name} End Val",
             )
-            x_vals = None if prefix == "Train" else [v[0] for v in self.val_history]
+            fig_weights_over_time = go.Figure()
 
-            fig.add_trace(
-                go.Scatter(
-                    x=x_vals,
-                    y=y_vals,
-                    mode="lines+markers",
-                    name=f"{prefix} End Val",
-                    line_color="green",
-                ),
-                row=row_start,
-                col=1,
-            )
-            fig.add_hline(
-                y=self.train_env.budget,
-                line_dash="dash",
-                line_color="red",
-                row=row_start,  # type:ignore
-                col=1,  # type:ignore
-            )
-
-            # Figure 2: weights per stock
-            if len(weights_hist) > 0:
-                fig.add_trace(
-                    go.Bar(
-                        x=self.tickers,
-                        y=weights_hist[-1],
-                        name=f"{prefix} Weights",
-                        marker_color="royalblue",
-                    ),
-                    row=row_start,
-                    col=2,
-                )
-                fig.update_yaxes(range=[0, 1], row=row_start, col=2)
-
-            # Figure 3: weights per stock over time
             if len(weights_hist) > 0:
                 w_array = np.array(weights_hist)
                 for i, ticker in enumerate(self.tickers):
-                    fig.add_trace(
-                        go.Scatter(
-                            y=w_array[:, i],
-                            mode="lines",
-                            stackgroup="one",
-                            name=ticker,
-                            showlegend=(prefix == "Train"),
-                        ),
-                        row=row_start + 1,
-                        col=1,
+                    fig_weights_over_time.add_scatter(
+                        y=list(w_array[:, i]),
+                        mode="lines",
+                        hoverinfo="x+y",
+                        name=ticker,
+                        stackgroup="one",
                     )
-                fig.update_yaxes(range=[0, 1], row=row_start + 1, col=1)
+                self.aim_run.track(
+                    Figure(fig_weights_over_time),
+                    name=f"{name} - weights over time",
+                    step=episode_num,
+                    context={"type": "plotly"},
+                )
 
-            # Figure 4: episode: summed stock value
-            fig.add_trace(
-                go.Scatter(
-                    y=equity_hist,
-                    mode="lines",
-                    name=f"{prefix} Equity",
-                    line_color="purple",
-                ),
-                row=row_start + 1,
-                col=2,
-            )
-
-        add_env_plots(
-            1,
-            self.episode_final_values,
-            self.current_episode_weights,
-            self.current_episode_value,
-            "Train",
-        )
-        add_env_plots(
-            3,
-            self.val_history,
-            self.val_current_weights,
-            self.val_current_values,
-            "Val",
+        fig_1.add_hline(
+            y=self.train_env.budget,
+            line_dash="dash",
+            line_color="red",
         )
 
-        fig.update_layout(
-            height=1200,
-            width=1200,
-            template="plotly_dark",
-            title_text=f"Reinforcement Learning Trader - Timestep {self.num_timesteps}",
-            title_x=0.5,
+        self.aim_run.track(
+            Figure(fig_1),
+            name="Final Value",
+            step=episode_num,
+            context={"type": "plotly"},
         )
-        fig.show()
-
-        if terminated:
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H.%M.%S")
-
-            val = f"{self.train_env.portfolio_value / 1000:.1f}k"
-
-            fig.write_image(f"runs/{timestamp}_step-{self.num_timesteps}_val-{val}.svg")
 
     def _on_training_end(self) -> None:
-
-        self._plot_dashboard(terminated=True)
+        self.progress_bar.close()

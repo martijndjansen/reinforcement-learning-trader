@@ -1,0 +1,32 @@
+
+trading:
+  tickers:
+    - AAPL
+    - MSFT
+    - NVDA
+    - JPM
+    - PG
+    - JNJ
+    - SPY
+    - QQQ
+    - XLE
+    - GLD
+    - TLT
+    - SHY
+  period: "20y"
+  num_episodes: 3
+
+env:
+  budget: 10000.0
+  episode_length: 252
+  history_length: 60
+  fee_rate: 0.0005
+  alpha: 0.5
+  distribution: "gaussian"
+
+
+model:
+  device: "cuda"
+  buffer_size: 100000
+  top_quantiles_to_drop_per_net: 2
+  log_interval: 4

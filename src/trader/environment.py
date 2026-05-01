@@ -1,22 +1,14 @@
-from typing import Any, Dict, Literal, Tuple
+from typing import Any
 
 import gymnasium as gym
 import numpy as np
 
+from .config import EnvConfig
 from .data_classes import EnvData
 
 
 class TraderEnvironment(gym.Env):
-    def __init__(
-        self,
-        env_data: EnvData,
-        budget: np.float32,
-        episode_length: int,
-        history_length: int,
-        fee_rate: np.float32,
-        distribution: Literal["gaussian", "dirichlet"],
-        alpha: np.float32,
-    ) -> None:
+    def __init__(self, env_data: EnvData, config: EnvConfig) -> None:
 
         self.num_stocks = env_data.num_stocks
         self.data = env_data.data
@@ -29,11 +21,12 @@ class TraderEnvironment(gym.Env):
         )
 
         self.num_current_weights = env_data.num_stocks + 1
-        self.budget = budget
-        self.fee_rate = fee_rate
-        self.episode_length = episode_length
-        self.history_length = history_length
-        self.distribution: Literal["gaussian", "dirichlet"] = distribution
+        self.budget = config.budget
+        self.fee_rate = config.fee_rate
+        self.episode_length = config.episode_length
+        self.history_length = config.history_length
+        self.distribution = config.distribution
+        self.alpha = config.alpha
 
         self.observation_space = gym.spaces.Box(
             low=0,
@@ -48,14 +41,12 @@ class TraderEnvironment(gym.Env):
         )
 
         limits = (-np.inf, np.inf)
-        if distribution == "dirichlet":
+        if self.distribution == "dirichlet":
             limits = (0, 1)
-        elif distribution == "gaussian":
+        elif self.distribution == "gaussian":
             limits = (-10, 10)
         else:
-            raise ValueError(f"Distribution `{distribution}` not implemented")
-
-        self.alpha = alpha
+            raise ValueError(f"Distribution `{self.distribution}` not implemented")
 
         self.action_space = gym.spaces.Box(
             low=limits[0],
@@ -75,7 +66,7 @@ class TraderEnvironment(gym.Env):
 
     def reset(
         self, *, seed: int | None = None, options: dict[str, Any] | None = None
-    ) -> Tuple[np.ndarray, dict]:
+    ) -> tuple[np.ndarray, dict]:
         super().reset(seed=seed)
 
         raw_weights = self.np_random.uniform(0.1, 1, self.num_current_weights)
@@ -91,7 +82,7 @@ class TraderEnvironment(gym.Env):
 
     def step(
         self, action: np.ndarray
-    ) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
+    ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         if self.distribution == "gaussian":
             shift_actions = action - np.max(action)
             action = np.exp(shift_actions) / np.sum(np.exp(shift_actions))
