@@ -17,6 +17,7 @@ class LivePlotCallback(BaseCallback):
         tickers: list[str],
         total_timesteps: int,
         episode_length: int,
+        aim_run: Run,
         verbose: int = 0,
     ) -> None:
         super().__init__(verbose)
@@ -25,7 +26,7 @@ class LivePlotCallback(BaseCallback):
         self.tickers = [*tickers, "CASH"]
         self.total_timesteps = total_timesteps
 
-        self.aim_run = Run(repo=".", experiment="rl_trading")
+        self.aim_run = aim_run
 
         self.episode_final_values = []
         self.val_history = []

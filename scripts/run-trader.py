@@ -1,4 +1,6 @@
 import hydra
+from aim import Run
+from omegaconf import OmegaConf
 from sb3_contrib import TQC
 
 from trader import LivePlotCallback, StockDataLoader, TraderEnvironment
@@ -7,6 +9,11 @@ from trader.config import Config
 
 @hydra.main(version_base=None, config_path="../conf", config_name="config")
 def main(cfg: Config) -> None:
+
+    aim_run = Run(repo=".", experiment="rl_trading")
+
+    aim_run["hparams"] = OmegaConf.to_container(cfg, resolve=True)
+
     train_env_data, val_env_data = StockDataLoader(
         tickers=cfg.trading.tickers, period=cfg.trading.period
     ).load()
@@ -22,6 +29,7 @@ def main(cfg: Config) -> None:
         tickers=cfg.trading.tickers,
         total_timesteps=total_timesteps,
         episode_length=cfg.env.episode_length,
+        aim_run=aim_run,
     )
 
     model = TQC(
