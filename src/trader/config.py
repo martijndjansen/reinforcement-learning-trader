@@ -21,7 +21,8 @@ class ModelConfig:
     buffer_size: int
     top_quantiles_to_drop_per_net: int
     log_interval: int
-    device: str = "cuda"
+    utd_ratio: int
+    device: str
 
 
 @dataclass

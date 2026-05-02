@@ -14,7 +14,7 @@ trading:
     - TLT
     - SHY
   period: "20y"
-  num_episodes: 3
+  num_episodes: 5000
 
 env:
   budget: 10000.0
@@ -30,3 +30,4 @@ model:
   buffer_size: 100000
   top_quantiles_to_drop_per_net: 2
   log_interval: 4
+  utd_ratio: 2
