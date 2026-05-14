@@ -23,6 +23,7 @@ class ModelConfig:
     log_interval: int
     utd_ratio: int
     device: str
+    type: str
 
 
 @dataclass
@@ -32,6 +33,7 @@ class TradingConfig:
     tickers: list[str]
     period: str
     num_episodes: int
+    portfolio_name: str
 
 
 @dataclass

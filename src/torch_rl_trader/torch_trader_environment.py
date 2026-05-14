@@ -1,3 +1,4 @@
+import random
 from typing import Any
 
 import torch
@@ -16,13 +17,12 @@ class TorchTraderEnvironment(EnvBase):
         env_data: EnvData,
         config: EnvConfig,
         device: str,
-        batch_size: int = None,
+        batch_size: torch.Size | None = None,
     ) -> None:
         if batch_size is None:
             batch_size = torch.Size([])
-        else:
-            batch_size = torch.Size([batch_size])
-        super().__init__(device=device, batch_size=torch.Size(batch_size))
+
+        super().__init__(device=device, batch_size=batch_size)
 
         self.data = torch.as_tensor(env_data.data, device=device, dtype=torch.float32)
         self.prices = torch.as_tensor(
@@ -39,11 +39,11 @@ class TorchTraderEnvironment(EnvBase):
         self.history_length = config.history_length
         self.episode_length = config.episode_length
         self.fee_rate = config.fee_rate
-        self.alpha = config.alpha
+        self.alpha = torch.as_tensor(config.alpha, device=device)
 
         self.observation_spec = Composite(
-            observation=Unbounded(shape=self._get_obs_size(env_data)),
-            current_weights=Bounded(low=0, high=1, shape=self.num_assets),
+            observation=Unbounded(shape=torch.Size([self._get_obs_size(env_data)])),
+            current_weights=Bounded(low=0.0, high=1.0, shape=self.num_assets),
             current_step=Unbounded(shape=torch.Size([]), dtype=torch.int32),
             portfolio_value=Unbounded(shape=1),
             elapsed_steps=Unbounded(shape=torch.Size([]), dtype=torch.int32),
@@ -93,34 +93,43 @@ class TorchTraderEnvironment(EnvBase):
         return out
 
     def _step(self, tensordict: TensorDict) -> TensorDict:
-        step = tensordict["current_step"]
-        weights = tensordict["current_weights"]
-        val = tensordict["portfolio_value"]
+        current_step = tensordict["current_step"]
+        current_weights = tensordict["current_weights"]
+        portfolio_value = tensordict["portfolio_value"]
         elapsed = tensordict["elapsed_steps"]
+        action = tensordict["action"]
 
-        target_weights = torch.softmax(tensordict["action"], dim=-1)
+        target_weights = action
+        target_weights = torch.softmax(action, dim=-1)
 
-        cost = torch.abs(target_weights - weights).sum() * self.fee_rate
-        r = self.step_returns[step]
-        growth = (target_weights * r).sum()
+        cost = (
+            torch.abs(target_weights - current_weights).sum(dim=-1, keepdim=True)
+            * self.fee_rate
+        )
+        r = self.step_returns[current_step]
+        growth_factor = (target_weights * (r)).sum(dim=-1, keepdim=True)
 
-        new_val = val * (1.0 - cost) * growth
-        net_return = (new_val - val) / (val + 1e-8)
+        new_portfolio_value = portfolio_value * (1.0 - cost) * growth_factor
+        net_return = (new_portfolio_value - portfolio_value) / (portfolio_value + 1e-8)
         reward = (1 - torch.exp(-self.alpha * net_return)) / self.alpha
 
-        new_weights = (target_weights * r) / (growth + 1e-8)
-        new_step = step + 1
+        new_weights = (target_weights * (r)) / (growth_factor + 1e-8)
+        new_step = current_step + 1
         new_elapsed = elapsed + 1
 
-        terminated = new_step >= len(self.data) - 1
-        truncated = new_elapsed >= self.episode_length
+        terminated = torch.tensor(
+            [new_step >= len(self.data) - 1], device=self.device, dtype=torch.bool
+        )
+        truncated = torch.tensor(
+            [new_elapsed >= self.episode_length], device=self.device, dtype=torch.bool
+        )
         done = terminated | truncated
 
         out = TensorDict(
             {
                 "current_step": new_step,
                 "current_weights": new_weights,
-                "portfolio_value": new_val,
+                "portfolio_value": new_portfolio_value,
                 "elapsed_steps": new_elapsed,
                 "reward": reward,
                 "done": done,
@@ -136,7 +145,18 @@ class TorchTraderEnvironment(EnvBase):
 
     def _get_observation(self, td: TensorDict) -> Tensor:
         step = td["current_step"]
-        window = self.data[step - self.history_length : step]
+
+        start = torch.clamp(step + 1 - self.history_length, min=0)
+        window = self.data[start : step + 1]
+
+        padding_length = self.history_length - window.shape[0]
+        if padding_length > 0:
+            pad = torch.zeros(
+                (padding_length, *self.data.shape[1:]),
+                device=self.data.device,
+                dtype=self.data.dtype,
+            )
+            window = torch.cat([pad, window], dim=0)
         return torch.cat([window.reshape(-1), td["current_weights"]])
 
     def _get_obs_size(self, env_data: EnvData) -> int:
@@ -145,4 +165,11 @@ class TorchTraderEnvironment(EnvBase):
         ) * self.history_length + self.num_assets
 
     def _set_seed(self, seed: int | None) -> None:
-        return super()._set_seed(seed)
+        if seed is None:
+            return
+
+        random.seed(seed)
+        torch.manual_seed(seed)
+
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)

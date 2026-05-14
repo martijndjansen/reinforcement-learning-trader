@@ -1,9 +1,9 @@
+import torch.nn as nn
 from tensordict.nn import (
     ProbabilisticTensorDictModule,
     ProbabilisticTensorDictSequential,
     TensorDictModule,
 )
-from torch import nn
 from torchrl.modules import MLP, NormalParamExtractor, TanhNormal, ValueOperator
 
 
@@ -12,9 +12,24 @@ def build_mlp_sac_modules(
 ) -> tuple[ProbabilisticTensorDictSequential, ValueOperator]:
 
     actor_net = nn.Sequential(
-        MLP(in_features=obs_dim, out_features=2 * act_dim, num_cells=hidden_sizes),
+        MLP(
+            in_features=obs_dim,
+            out_features=2 * act_dim,
+            num_cells=hidden_sizes,
+            norm_class=nn.LayerNorm,
+            norm_kwargs={"normalized_shape": hidden_sizes[-1]},
+        ),
         NormalParamExtractor(),
     )
+
+    q_net = MLP(
+        in_features=obs_dim + act_dim,
+        out_features=1,
+        num_cells=hidden_sizes,
+        norm_class=nn.LayerNorm,
+        norm_kwargs={"normalized_shape": hidden_sizes[-1]},
+    )
+
     policy = ProbabilisticTensorDictSequential(
         [
             TensorDictModule(
@@ -24,14 +39,15 @@ def build_mlp_sac_modules(
                 in_keys=["loc", "scale"],
                 out_keys=["action"],
                 distribution_class=TanhNormal,
+                distribution_kwargs={"low": -10.0, "high": 10.0},
+                return_log_prob=True,
             ),
         ]
     )
 
     q_module = ValueOperator(
-        module=MLP(
-            in_features=obs_dim + act_dim, out_features=1, num_cells=hidden_sizes
-        ),
+        module=q_net,
         in_keys=["observation", "action"],
     )
+
     return policy, q_module
